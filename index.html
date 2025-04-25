@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>Cube Engine Chronicles</title>
+	<script src="https://cdn.jsdelivr.net/npm/fuse.js@6.6.2"></script>
+	<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="icon" href="favicon.ico" type="image/x-icon" />
+	<style>
+		a {
+			color: #4bc0c0;
+			text-decoration: none;
+		}
+
+		html, body { overflow-x: hidden; }
+
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #111;
+			color: #eee;
+		}
+
+		header { padding: 1rem; background-color: #222; }
+
+		input[type="search"] {
+			width: 100%;
+			padding: 0.5rem;
+			font-size: 1rem;
+			border: none;
+			border-radius: 6px;
+			margin-top: 0.5rem;
+		}
+
+		.stats {
+			padding: 1rem;
+			font-size: 0.9rem;
+			background-color: #1a1a1a;
+		}
+
+		canvas {
+			display: block;
+			max-width: 900px;
+			width: 100%;
+			height: auto;
+			margin: 0 auto;
+			padding: 1rem;
+		}
+
+		#logo {
+			width: 50px;
+			height: 50px;
+			vertical-align: middle;
+			margin-right: 0.5rem;
+		}
+
+		#backToTop {
+				position: fixed;
+				top: 20px;
+				right: 50%;
+				z-index: 999;
+				display: none;
+				background-color: #3b3b3bb3;
+				border: none;
+				/* padding: 0.6rem 1rem; */
+				border-radius: 8px;
+				font-size: 1rem;
+				cursor: pointer;
+				box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+				transition: opacity 0.3s ease;
+				color: #7ce1e1;
+				padding: 0.5em 1rem;
+				padding-top: 3px;
+		}
+
+		#backToTop:hover {
+			background-color: #38a5a5;
+		}
+
+		.linked-url {
+			display: inline-flex;
+			align-items: center;
+			gap: 4px;
+			margin-right: 4px;
+		}
+
+		.linked-url a {
+			color: #4bc0c0;
+			word-break: break-all;
+		}
+
+		.url-btn {
+			background: none;
+			border: none;
+			color: #aaa;
+			font-size: 0.9em;
+			cursor: pointer;
+			padding: 0 4px;
+			transition: color 0.2s;
+		}
+
+		.url-btn:hover {
+			color: #4bc0c0;
+		}
+
+		.thread {
+			background-color: #1f1f1f;
+			margin: 1rem;
+			border-radius: 8px;
+			padding: 1rem;
+			box-shadow: 0 0 5px #000;
+		}
+
+		.message {
+			margin: 0.5rem 0;
+			padding: 0.5rem;
+			background-color: #292929;
+			border-radius: 6px;
+		}
+
+		.message.anchor-highlight {
+			background-color: #3c3c3c !important;
+			border: 1px solid #4bc0c0;
+		}
+
+		.message.expandable:hover,
+		.message[data-expandable="true"]:hover {
+			background-color: #333;
+			cursor: pointer;
+		}
+
+		.message p, .message div {
+			margin: 0.2rem 0;
+		}
+
+		.hidden-content { display: none; }
+		
+		mark { background-color: yellow; color: black; }
+
+		.timestamp {
+			font-size: 0.8em;
+			color: #888;
+			margin-left: 0.5rem;
+		}
+
+		#loading {
+			display: none;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			padding: 1rem;
+			font-style: italic;
+			font-size: 0.95rem;
+			color: #ccc;
+		}
+
+		.spinner {
+			width: 24px;
+			height: 24px;
+			border: 3px solid #888;
+			border-top: 3px solid #4bc0c0;
+			border-radius: 50%;
+			animation: spin 0.8s linear infinite;
+			margin-bottom: 0.5rem;
+		}
+
+		@keyframes spin {
+			0% { transform: rotate(0deg); }
+			100% { transform: rotate(360deg); }
+		}
+	</style>
+</head>
+<body>
+	<header>
+		<h1><img src="./logo.png" id="logo"/> Cube Engine Chronicles (Forum Archive)</h1>
+		<p>An archive of forum discussions from <a href="http://cubeengine.com/forum.php" target="_blank">cubeengine.com</a>, by the Sauerbraten community. [<strong><a href="cube_threads_04-25-2025.json">download .json data</a></strong>] <br><a href="http://sauerbraten.org/">sauerbraten.org</a> / <a href="https://discord.gg/j3kyxtj">sauerworld.org</a></p>
+		<input type="search" id="searchInput" placeholder="Search threads (e.g. author:alice title:map regex:/hello/i date:12-25-2005 year:2023 after:2020 before:2025)..." />
+	</header>
+	<div class="stats" id="stats"></div>
+	<div><canvas id="postsChart"></canvas></div>
+	<div id="loading"><div class="spinner"></div>Loading threads...</div>
+	<div id="threadsContainer"></div>
+	<button id="backToTop" title="Back to Top">🢁</button>
+	<script src="https://cdn.jsdelivr.net/npm/fflate@0.7.4/umd/index.min.js"></script>
+	<script>
+		let allThreads = [];
+		let fuse;
+		let searchDebounce;
+		let currentQuery = '';
+		let chart;
+
+		const params = new URLSearchParams(window.location.search);
+		const initialSearch = params.get('search');
+
+		async function loadThreads() {
+			document.getElementById('loading').style.display = 'flex';
+			const res = await fetch('cube_threads_04-25-2025.json.gz');
+			const compressed = await res.arrayBuffer();
+
+			// decompress gzip
+			const decompressed = fflate.decompressSync(new Uint8Array(compressed));
+			const jsonText = new TextDecoder().decode(decompressed);
+			const data = JSON.parse(jsonText);
+
+			data.forEach(t => t.messages?.sort((a, b) => new Date(a.date) - new Date(b.date)));
+			allThreads = data.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+			const totalThreads = data.length;
+			const totalMessages = data.reduce((sum, t) => sum + (t.messages?.length || 0), 0);
+			document.getElementById('stats').textContent = `🧵 ${totalThreads} threads | 💬 ${totalMessages} messages`;
+
+			fuse = new Fuse(data.flatMap(t => t.messages.map(m => ({
+				thread_id: t.thread_id,
+				thread_title: t.title,
+				username: m.username,
+				date: m.date,
+				content: m.content
+			}))), {
+				keys: ['thread_title', 'content'],
+				threshold: 0.2,
+				includeScore: false,
+				minMatchCharLength: 2,
+				ignoreLocation: true,
+			});
+
+			const anchorHash = window.location.hash?.substring(1);
+			let prioritizedThread = null;
+
+			if (anchorHash) {
+				const [targetThreadId] = anchorHash.split('-');
+				const targetIndex = data.findIndex(t => String(t.thread_id) === targetThreadId);
+				if (targetIndex > -1) {
+					[prioritizedThread] = data.splice(targetIndex, 1);
+				}
+			}
+
+			if (anchorHash && !initialSearch && prioritizedThread) {
+				renderThreads([prioritizedThread], '', '', `Messages by Year in Thread #${prioritizedThread.thread_id}`);
+			} else {
+				renderThreads(allThreads);
+			}
+
+			document.getElementById('loading').style.display = 'none';
+
+			if (initialSearch) {
+				const input = document.getElementById('searchInput');
+				input.value = initialSearch;
+				input.dispatchEvent(new Event('input'));
+			}
+		}
+
+		function highlightText(text, query) {
+			if (!query) return text;
+			const plainQuery = query.replace(/author:\S+|title:\S+|regex:\/.*?\/[gimsuy]*|date:\S+|year:\d+|before:\d+|after:\d+/gi, '').trim();
+			if (!plainQuery) return text;
+			const regex = new RegExp(`(${plainQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+			return text.replace(regex, '<mark>$1</mark>');
+		}
+
+		function timeAgo(dateStr) {
+			const diff = Date.now() - new Date(dateStr);
+			const minutes = Math.floor(diff / 60000);
+			const hours = Math.floor(minutes / 60);
+			const days = Math.floor(hours / 24);
+			const years = Math.floor(days / 365);
+			const remDays = days % 365;
+			const remHours = hours % 24;
+			const remMinutes = minutes % 60;
+			return `${years}y ${remDays}d ${remHours}h ${remMinutes}m ago`;
+		}
+
+		function updateChart(threads, customLabel = 'Messages by Year') {
+			const counts = {};
+			threads.forEach(t => t.messages.forEach(m => {
+				const year = new Date(m.date).getFullYear();
+				counts[year] = (counts[year] || 0) + 1;
+			}));
+			const labels = Object.keys(counts).sort((a, b) => a - b);
+			const values = labels.map(k => counts[k]);
+
+			if (chart) chart.destroy();
+			const ctx = document.getElementById('postsChart').getContext('2d');
+			ctx.canvas.height = ctx.canvas.width * 0.4;
+
+			chart = new Chart(ctx, {
+				type: 'bar',
+				data: {
+					labels,
+					datasets: [{
+						label: customLabel,
+						data: values,
+						backgroundColor: '#4bc0c0'
+					}]
+				},
+				options: {
+					responsive: true,
+					maintainAspectRatio: false,
+					scales: {
+						x: { ticks: { color: '#ccc' } },
+						y: { ticks: { color: '#ccc' } }
+					},
+					plugins: { legend: { labels: { color: '#ccc' } } }
+				}
+			});
+		}
+
+		function linkify(html) {
+			const urlRegex = /(https?:\/\/[^\s<)"]*[^\s<)".,!?])/g;
+			return html.replace(urlRegex, url => {
+				const safeURL = url.replace(/"/g, '&quot;');
+				const archiveURL = `https://web.archive.org/web/*/${safeURL}`;
+				return `
+					<span class="linked-url">
+						<a href="${safeURL}" target="_blank" rel="noopener noreferrer">${safeURL}</a><button class="url-btn" onclick="event.stopPropagation(); window.open('${archiveURL}', '_blank')" title="open with Wayback Machine">🕰</button>
+					</span>`;
+			});
+		}
+
+		function renderThreads(threads, searchInfo = '', query = '', chartLabel = 'Messages by Year') {
+			const container = document.getElementById('threadsContainer');
+			container.innerHTML = '';
+			updateChart(threads, chartLabel);
+
+			if (searchInfo) {
+				const infoDiv = document.createElement('div');
+				infoDiv.className = 'stats';
+				infoDiv.textContent = searchInfo;
+				container.appendChild(infoDiv);
+			}
+
+			threads.forEach(thread => {
+				const div = document.createElement('div');
+				div.className = 'thread';
+
+				div.innerHTML = `
+					<h2>${highlightText(thread.title, query)}</h2>
+					<p><strong>By:</strong> ${thread.username || 'Unknown'} | <strong>Date:</strong> ${thread.date || ''}</p>
+					<p><strong>${thread.messages?.length || 0} messages${query ? ' matching "' + query + '"' : ''}</strong></p>
+					<p style="font-style: italic; color: #aaa;">${highlightText(thread.content?.substring(0, 200) || '', query)}</p>
+				`;
+
+				thread.messages?.forEach((m, i) => {
+					const msg = document.createElement('div');
+					msg.className = 'message';
+					const fullText = m.content || '';
+
+					const previewText = fullText.length > 300 ? fullText.substring(0, 300) : fullText;
+					const highlightedPreview = highlightText(previewText, query);
+					const highlightedFull = highlightText(fullText, query);
+
+					const preview = linkify(highlightedPreview);
+					const fullContent = linkify(highlightedFull);
+
+					const hasMore = fullText.length > 300;
+					const msgId = `${thread.thread_id}-${m.postId}`;
+					msg.id = msgId;
+
+					msg.setAttribute('data-expandable', hasMore);
+
+					msg.innerHTML = `
+						<p><strong><a href="?search=author:${m.username}">${highlightText(m.username, query)}</a></strong> on ${m.date}<span class="timestamp"> (${timeAgo(m.date)})</span></p>
+						<p class="preview">${preview}${hasMore ? '...' : ''}</p>
+						<div class="hidden-content">${fullContent.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>')}</div>
+					`;
+
+					msg.addEventListener('click', () => {
+						if (hasMore) {
+							const preview = msg.querySelector('.preview');
+							const hidden = msg.querySelector('.hidden-content');
+							const isHidden = hidden.style.display === 'block';
+							preview.style.display = isHidden ? 'block' : 'none';
+							hidden.style.display = isHidden ? 'none' : 'block';
+						}
+
+						document.querySelectorAll('.message.anchor-highlight').forEach(el => {
+							el.classList.remove('anchor-highlight');
+						});
+						msg.classList.add('anchor-highlight');
+
+						const url = new URL(window.location);
+						url.hash = msgId;
+						url.search = ''; // clear search
+						history.replaceState(null, '', url.toString());
+					});
+
+
+					if (msgId === window.location.hash?.substring(1)) {
+						msg.classList.add('anchor-highlight');
+						msg.querySelector('.preview').style.display = 'none';
+						msg.querySelector('.hidden-content').style.display = 'block';
+					}
+
+					div.appendChild(msg);
+				});
+
+				container.appendChild(div);
+			});
+
+			// scroll to anchor if exists
+			function scrollToAnchor() {
+				const anchor = window.location.hash?.substring(1);
+				if (!anchor) return;
+
+				const check = () => {
+					const el = document.getElementById(anchor);
+					if (el) {
+						el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+					} else {
+						requestAnimationFrame(check);
+					}
+				};
+				requestAnimationFrame(check);
+			}
+			scrollToAnchor();
+		}
+
+		document.getElementById('searchInput').addEventListener('input', e => {
+			clearTimeout(searchDebounce);
+			const query = e.target.value.trim();
+			currentQuery = query;
+
+			if (query.length <= 2) {
+				document.getElementById('loading').style.display = 'none';
+				return; // don't auto-search if 2 or fewer characters
+			}
+
+			searchDebounce = setTimeout(() => {
+				document.getElementById('loading').style.display = 'flex';
+				const newUrl = query
+				? `${window.location.pathname}?search=${encodeURIComponent(query)}`
+				: window.location.pathname;
+
+				history.replaceState(null, '', newUrl);
+
+				if (window.location.hash) {
+					history.replaceState(null, '', newUrl); // clear hash
+				}
+
+				if (!query) {
+					document.getElementById('loading').style.display = 'none';
+					return renderThreads(allThreads);
+				}
+
+				const authorMatch = query.match(/author:(\S+)/i);
+				const titleMatch = query.match(/title:(\S+)/i);
+				const regexMatch = query.match(/regex:\/(.+)\/(\w*)/);
+				const dateMatch = query.match(/date:(\d{2}-\d{2}-\d{4})/i);
+				const yearMatch = query.match(/year:(\d{4})/i);
+				const beforeMatch = query.match(/before:(\d{4})/i);
+				const afterMatch = query.match(/after:(\d{4})/i);
+				const plainQuery = query.replace(/author:\S+|title:\S+|regex:\/.*?\/[gimsuy]*|date:\S+|year:\d+|before:\d+|after:\d+/gi, '').trim();
+
+				const isRegex = regexMatch ? new RegExp(regexMatch[1], regexMatch[2]) : null;
+				const filterDate = dateMatch ? new Date(dateMatch[1]) : null;
+				const filterYear = yearMatch ? parseInt(yearMatch[1]) : null;
+				const filterBefore = beforeMatch ? parseInt(beforeMatch[1]) : null;
+				const filterAfter = afterMatch ? parseInt(afterMatch[1]) : null;
+
+				const filteredMessages = allThreads.flatMap(t =>
+					t.messages.map(m => ({ ...m, thread_id: t.thread_id, thread_title: t.title }))
+				).filter(m => {
+					const msgDate = new Date(m.date);
+					const msgYear = msgDate.getFullYear();
+
+					const authorMatchBool = authorMatch ? m.username?.toLowerCase().includes(authorMatch[1].toLowerCase()) : true;
+					const titleMatchBool = titleMatch ? m.thread_title?.toLowerCase().includes(titleMatch[1].toLowerCase()) : true;
+					const regexMatchBool = isRegex ? isRegex.test(m.content) : true;
+					const textMatchBool = plainQuery ? m.content?.toLowerCase().includes(plainQuery.toLowerCase()) || m.thread_title?.toLowerCase().includes(plainQuery.toLowerCase()) : true;
+
+					const dateMatchBool = filterDate ? (msgDate.toDateString() === filterDate.toDateString()) : true;
+					const yearMatchBool = filterYear ? (msgYear === filterYear) : true;
+					const beforeMatchBool = filterBefore ? (msgYear < filterBefore) : true;
+					const afterMatchBool = filterAfter ? (msgYear > filterAfter) : true;
+
+					return authorMatchBool && titleMatchBool && regexMatchBool && textMatchBool &&
+								 dateMatchBool && yearMatchBool && beforeMatchBool && afterMatchBool;
+				});
+
+				const grouped = {};
+				filteredMessages.forEach(item => {
+					if (!grouped[item.thread_id]) grouped[item.thread_id] = [];
+					grouped[item.thread_id].push(item);
+				});
+
+				const filteredThreads = Object.entries(grouped).map(([thread_id, messages]) => {
+					const originalThread = allThreads.find(t => t.thread_id == thread_id);
+					return {
+						...originalThread,
+						messages: messages.sort((a, b) => new Date(a.date) - new Date(b.date))
+					};
+				});
+
+				document.getElementById('loading').style.display = 'none';
+				renderThreads(filteredThreads, `🔍 ${filteredMessages.length} messages matching "${query}"`, query);
+			}, 500);
+		});
+
+		loadThreads();
+		document.querySelector('header h1').style.cursor = 'pointer';
+		document.querySelector('header h1').addEventListener('click', () => {
+			const input = document.getElementById('searchInput');
+			input.value = '';
+			currentQuery = '';
+			window.location.search = '';
+			history.replaceState(null, '', window.location.pathname);
+			loadThreads();
+		});
+
+		window.addEventListener('scroll', () => {
+			const btn = document.getElementById('backToTop');
+			if (window.scrollY > 400) {
+				btn.style.display = 'block';
+			} else {
+				btn.style.display = 'none';
+			}
+		});
+
+		document.getElementById('backToTop').addEventListener('click', () => {
+			window.scrollTo({ top: 0, behavior: 'smooth' });
+		});
+
+	</script>
+</body>
+</html>
