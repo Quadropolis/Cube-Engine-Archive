@@ -259,6 +259,34 @@
 			return text.replace(regex, '<mark>$1</mark>');
 		}
 
+		function highlightHTML(html, query) {
+			if (!query) return html;
+			const plainQuery = query.replace(/author:\S+|title:\S+|regex:\/.*?\/[gimsuy]*|date:\S+|year:\d+|before:\d+|after:\d+/gi, '').trim();
+			if (!plainQuery) return html;
+
+			const tempDiv = document.createElement('div');
+			tempDiv.innerHTML = html;
+
+			const regex = new RegExp(`(${plainQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+
+			function walk(node) {
+				if (node.nodeType === 3) { // text node
+					const replaced = node.nodeValue.replace(regex, '<mark>$1</mark>');
+					if (replaced !== node.nodeValue) {
+						const span = document.createElement('span');
+						span.innerHTML = replaced;
+						node.replaceWith(...span.childNodes);
+					}
+				} else if (node.nodeType === 1 && node.childNodes) { // element node
+					node.childNodes.forEach(walk);
+				}
+			}
+
+			walk(tempDiv);
+			return tempDiv.innerHTML;
+		}
+
+
 		function timeAgo(dateStr) {
 			const diff = Date.now() - new Date(dateStr);
 			const minutes = Math.floor(diff / 60000);
@@ -335,10 +363,10 @@
 				div.className = 'thread';
 
 				div.innerHTML = `
-					<h2>${highlightText(thread.title, query)}</h2>
+					<h2>${highlightHTML(thread.title, query)}</h2>
 					<p><strong>By:</strong> ${thread.username || 'Unknown'} | <strong>Date:</strong> ${thread.date || ''}</p>
 					<p><strong>${thread.messages?.length || 0} messages${query ? ' matching "' + query + '"' : ''}</strong></p>
-					<p style="font-style: italic; color: #aaa;">${highlightText(thread.content?.substring(0, 200) || '', query)}</p>
+					<p style="font-style: italic; color: #aaa;">${highlightHTML(thread.content?.substring(0, 200) || '', query)}</p>
 				`;
 
 				thread.messages?.forEach((m, i) => {
@@ -347,11 +375,12 @@
 					const fullText = m.content || '';
 
 					const previewText = fullText.length > 300 ? fullText.substring(0, 300) : fullText;
-					const highlightedPreview = highlightText(previewText, query);
-					const highlightedFull = highlightText(fullText, query);
 
-					const preview = linkify(highlightedPreview);
-					const fullContent = linkify(highlightedFull);
+					const linkedPreview = linkify(previewText);
+					const linkedFull = linkify(fullText);
+
+					const preview = highlightHTML(linkedPreview, query);
+					const fullContent = highlightHTML(linkedFull, query);
 
 					const hasMore = fullText.length > 300;
 					const msgId = `${thread.thread_id}-${m.postId}`;
@@ -360,7 +389,7 @@
 					msg.setAttribute('data-expandable', hasMore);
 
 					msg.innerHTML = `
-						<p><strong><a href="?search=author:${m.username}">${highlightText(m.username, query)}</a></strong> on ${m.date}<span class="timestamp"> (${timeAgo(m.date)})</span></p>
+						<p><strong><a href="?search=author:${m.username}">${highlightHTML(m.username, query)}</a></strong> on ${m.date}<span class="timestamp"> (${timeAgo(m.date)})</span></p>
 						<p class="preview">${preview}${hasMore ? '...' : ''}</p>
 						<div class="hidden-content">${fullContent.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>')}</div>
 					`;
