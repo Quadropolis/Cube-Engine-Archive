@@ -11,7 +11,7 @@
 	<title>Cube Engine Chronicles</title>
 	<script src="https://cdn.jsdelivr.net/npm/fuse.js@6.6.2"></script>
 	<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <link rel="icon" href="favicon.ico" type="image/x-icon" />
+  	<link rel="icon" href="favicon.ico" type="image/x-icon" />
 	<style>
 		a {
 			color: #4bc0c0;
@@ -363,76 +363,161 @@
 				container.appendChild(infoDiv);
 			}
 
+			const anchor = window.location.hash?.substring(1);
+			let anchorThreadId = anchor ? anchor.split('-')[0] : null;
+
 			threads.forEach(thread => {
 				const div = document.createElement('div');
 				div.className = 'thread';
 
-				div.innerHTML = `
-					<h2>${highlightHTML(thread.title, query)}</h2>
-					<p><strong>By:</strong> ${thread.username || 'Unknown'} | <strong>Date:</strong> ${thread.date || ''}</p>
-					<p><strong>${thread.messages?.length || 0} messages${query ? ' matching "' + query + '"' : ''}</strong></p>
-					<p style="font-style: italic; color: #aaa;">${highlightHTML(thread.content?.substring(0, 200) || '', query)}</p>
+				const header = document.createElement('div');
+				header.style.cursor = 'pointer';
+				header.style.display = 'flex';
+				header.style.justifyContent = 'space-between';
+				header.style.alignItems = 'center';
+
+				header.innerHTML = `
+					<div>
+						<h2 style="display:inline">${highlightHTML(thread.title, query)}</h2>
+						<p style="margin:0.3em 0; font-size: 0.9em; color:#aaa;">
+							<strong>By:</strong> ${thread.username || 'Unknown'} | <strong>Date:</strong> ${thread.date || ''}
+						</p>
+					</div>
+					<div style="font-size: 1.5em;">🢓</div>
 				`;
 
-				thread.messages?.forEach((m, i) => {
-					const msg = document.createElement('div');
-					msg.className = 'message';
-					const fullText = m.content || '';
+				const toggleIcon = header.querySelector('div:last-child');
 
-					const previewText = fullText.length > 300 ? fullText.substring(0, 300) : fullText;
+				const messagesContainer = document.createElement('div');
+				messagesContainer.style.display = (currentQuery ? 'block' : 'none'); // show immediately if searching
+				messagesContainer.style.marginTop = '1rem';
 
-					const linkedPreview = linkify(previewText);
-					const linkedFull = linkify(fullText);
+				let expanded = currentQuery !== ''; // expand if searching
+				let messagesLoaded = false;
 
-					const preview = highlightHTML(linkedPreview, query);
-					const fullContent = highlightHTML(linkedFull, query);
+				const loadingDiv = document.createElement('div');
+				loadingDiv.style.display = 'none';
+				loadingDiv.style.justifyContent = 'center';
+				loadingDiv.style.alignItems = 'center';
+				loadingDiv.style.padding = '1rem';
+				loadingDiv.innerHTML = `
+					<div class="spinner" style="width:30px;height:30px;"></div>
+				`;
+				messagesContainer.appendChild(loadingDiv);
+				
+				if (currentQuery && !messagesLoaded) {
+					createMessages();
+				}
 
-					const hasMore = fullText.length > 300;
-					const msgId = `${thread.thread_id}-${m.postId}`;
-					msg.id = msgId;
+				function createMessages() {
+					loadingDiv.style.display = 'flex';
 
-					msg.setAttribute('data-expandable', hasMore);
-
-					msg.innerHTML = `
-						<p><strong><a href="?search=author:${m.username}">${highlightHTML(m.username, query)}</a></strong> on ${m.date}<span class="timestamp"> (${timeAgo(m.date)})</span></p>
-						<p class="preview">${preview}${hasMore ? '...' : ''}</p>
-						<div class="hidden-content">${fullContent.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>')}</div>
-					`;
-
-					msg.addEventListener('click', () => {
-						if (hasMore) {
-							const preview = msg.querySelector('.preview');
-							const hidden = msg.querySelector('.hidden-content');
-							const isHidden = hidden.style.display === 'block';
-							preview.style.display = isHidden ? 'block' : 'none';
-							hidden.style.display = isHidden ? 'none' : 'block';
+					setTimeout(() => {
+						if (thread.content) {
+							const threadContentDiv = document.createElement('div');
+							threadContentDiv.className = 'message';
+							threadContentDiv.innerHTML = `
+								<p><strong>Original Post by ${highlightHTML(thread.username || 'Unknown', query)}</strong> (${thread.date})</p>
+								<p>${highlightHTML(linkify(thread.content), query).replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>')}</p>
+							`;
+							messagesContainer.appendChild(threadContentDiv);
 						}
 
-						document.querySelectorAll('.message.anchor-highlight').forEach(el => {
-							el.classList.remove('anchor-highlight');
-						});
-						msg.classList.add('anchor-highlight');
+						if (thread.messages?.length) {
+							thread.messages.forEach((m, i) => {
+								const msg = document.createElement('div');
+								msg.className = 'message';
+								const fullText = m.content || '';
 
-						const url = new URL(window.location);
-						url.hash = msgId;
-						url.search = ''; // clear search
-						history.replaceState(null, '', url.toString());
-					});
+								const previewText = fullText.length > 300 ? fullText.substring(0, 300) : fullText;
+								const linkedPreview = linkify(previewText);
+								const linkedFull = linkify(fullText);
 
+								const preview = highlightHTML(linkedPreview, query);
+								const fullContent = highlightHTML(linkedFull, query);
 
-					if (msgId === window.location.hash?.substring(1)) {
-						msg.classList.add('anchor-highlight');
-						msg.querySelector('.preview').style.display = 'none';
-						msg.querySelector('.hidden-content').style.display = 'block';
+								const hasMore = fullText.length > 300;
+								const msgId = `${thread.thread_id}-${m.postId}`;
+								msg.id = msgId;
+
+								msg.setAttribute('data-expandable', hasMore);
+
+								msg.innerHTML = `
+									<p><strong><a href="?search=author:${m.username}">${highlightHTML(m.username, query)}</a></strong> on ${m.date}<span class="timestamp"> (${timeAgo(m.date)})</span></p>
+									<p class="preview">${preview}${hasMore ? '...' : ''}</p>
+									<div class="hidden-content">${fullContent.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>')}</div>
+								`;
+
+								msg.addEventListener('click', (e) => {
+									e.stopPropagation();
+
+									if (hasMore) {
+										const preview = msg.querySelector('.preview');
+										const hidden = msg.querySelector('.hidden-content');
+										const isHidden = hidden.style.display === 'block';
+										preview.style.display = isHidden ? 'block' : 'none';
+										hidden.style.display = isHidden ? 'none' : 'block';
+									}
+
+									document.querySelectorAll('.message.anchor-highlight').forEach(el => {
+										el.classList.remove('anchor-highlight');
+									});
+									msg.classList.add('anchor-highlight');
+
+									const url = new URL(window.location);
+									url.hash = msgId;
+									url.search = '';
+									history.replaceState(null, '', url.toString());
+								});
+
+								if (msgId === window.location.hash?.substring(1)) {
+									msg.classList.add('anchor-highlight');
+									msg.querySelector('.preview').style.display = 'none';
+									msg.querySelector('.hidden-content').style.display = 'block';
+								}
+
+								messagesContainer.appendChild(msg);
+							});
+						} else {
+							// if no messages
+							const noRepliesDiv = document.createElement('div');
+							noRepliesDiv.className = 'message';
+							noRepliesDiv.style.fontStyle = 'italic';
+							noRepliesDiv.style.color = '#aaa';
+							noRepliesDiv.textContent = 'No replies in this thread.';
+							messagesContainer.appendChild(noRepliesDiv);
+						}
+
+						loadingDiv.style.display = 'none';
+						messagesLoaded = true;
+
+					}, 100);
+				}
+
+				header.addEventListener('click', () => {
+					expanded = !expanded;
+					messagesContainer.style.display = expanded ? 'block' : 'none';
+					toggleIcon.textContent = expanded ? '🢑' : '🢓';
+
+					if (expanded && !messagesLoaded) {
+						createMessages();
 					}
-
-					div.appendChild(msg);
 				});
 
+				// auto expand if anchor matches
+				if (!currentQuery && String(thread.thread_id) === anchorThreadId) {
+					expanded = true;
+					messagesContainer.style.display = 'block';
+					toggleIcon.textContent = '🢑';
+					createMessages();
+				}
+
+				div.appendChild(header);
+				div.appendChild(messagesContainer);
 				container.appendChild(div);
 			});
 
-			// scroll to anchor if exists
+			// scroll to anchor after everything
 			function scrollToAnchor() {
 				const anchor = window.location.hash?.substring(1);
 				if (!anchor) return;
@@ -537,10 +622,12 @@
 			const input = document.getElementById('searchInput');
 			input.value = '';
 			currentQuery = '';
-			window.location.search = '';
+
 			history.replaceState(null, '', window.location.pathname);
+
 			loadThreads();
 		});
+
 
 		window.addEventListener('scroll', () => {
 			const btn = document.getElementById('backToTop');
