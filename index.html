@@ -9,7 +9,6 @@
 	<meta property="og:url" content="https://quadropolis.github.io/Cube-Engine-Archive/" />
 
 	<title>Cube Engine Chronicles</title>
-	<script src="https://cdn.jsdelivr.net/npm/fuse.js@6.6.2"></script>
 	<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   	<link rel="icon" href="favicon.ico" type="image/x-icon" />
 	<style>
@@ -180,7 +179,7 @@
 <body>
 	<header>
 		<h1><img src="./logo.png" id="logo"/> Cube Engine Chronicles (Forum Archive)</h1>
-		<p>An archive of forum discussions from <a href="http://cubeengine.com/forum.php" target="_blank">cubeengine.com</a>, by the Sauerbraten community. [<strong><a href="cube_threads_04-25-2025.json.gz">download cube_threads_04-25-2025.json.gz</a></strong>] <br><a href="http://sauerbraten.org/">sauerbraten.org</a> / <a href="https://discord.gg/j3kyxtj">sauerworld.org</a></p>
+		<p>An archive of forum discussions from <a href="http://cubeengine.com/forum.php" target="_blank">cubeengine.com</a>, by the Sauerbraten community. [<strong><a href="cube_threads_04-26-2025.json.gz">download cube_threads_04-26-2025.json.gz</a></strong>] <br><a href="http://sauerbraten.org/">sauerbraten.org</a> / <a href="https://discord.gg/j3kyxtj">sauerworld.org</a></p>
 		<input type="search" id="searchInput" placeholder="Search threads (e.g. author:alice title:map regex:/hello/i date:12-25-2005 year:2023 after:2020 before:2025)..." />
 	</header>
 	<div class="stats" id="stats"></div>
@@ -191,7 +190,6 @@
 	<script src="https://cdn.jsdelivr.net/npm/fflate@0.7.4/umd/index.min.js"></script>
 	<script>
 		let allThreads = [];
-		let fuse;
 		let searchDebounce;
 		let currentQuery = '';
 		let chart;
@@ -201,7 +199,7 @@
 
 		async function loadThreads() {
 			document.getElementById('loading').style.display = 'flex';
-			const res = await fetch('cube_threads_04-25-2025.json.gz');
+			const res = await fetch('cube_threads_04-26-2025.json.gz');
 			const compressed = await res.arrayBuffer();
 
 			// decompress gzip
@@ -214,21 +212,7 @@
 
 			const totalThreads = data.length;
 			const totalMessages = data.reduce((sum, t) => sum + (t.messages?.length || 0), 0);
-			document.getElementById('stats').textContent = `🧵 ${totalThreads} threads | 💬 ${totalMessages} messages`;
-
-			fuse = new Fuse(data.flatMap(t => t.messages.map(m => ({
-				thread_id: t.thread_id,
-				thread_title: t.title,
-				username: m.username,
-				date: m.date,
-				content: m.content
-			}))), {
-				keys: ['thread_title', 'content'],
-				threshold: 0.2,
-				includeScore: false,
-				minMatchCharLength: 2,
-				ignoreLocation: true,
-			});
+			document.getElementById('stats').textContent = `🧵 ${totalThreads} threads | 💬 ${totalMessages} replies`;
 
 			const anchorHash = window.location.hash?.substring(1);
 			let prioritizedThread = null;
@@ -242,7 +226,7 @@
 			}
 
 			if (anchorHash && !initialSearch && prioritizedThread) {
-				renderThreads([prioritizedThread], '', '', `Messages by Year in Thread #${prioritizedThread.thread_id}`);
+				renderThreads([prioritizedThread], '', '', `Interactions by Year in Thread #${prioritizedThread.thread_id}`);
 			} else {
 				renderThreads(allThreads);
 			}
@@ -291,7 +275,6 @@
 			return tempDiv.innerHTML;
 		}
 
-
 		function timeAgo(dateStr) {
 			const diff = Date.now() - new Date(dateStr);
 			const minutes = Math.floor(diff / 60000);
@@ -320,21 +303,36 @@
 			chart = new Chart(ctx, {
 				type: 'bar',
 				data: {
-					labels,
-					datasets: [{
-						label: customLabel,
-						data: values,
-						backgroundColor: '#4bc0c0'
-					}]
+					labels: allYears,
+					datasets: [
+						{
+							label: 'Replies',
+							data: replyCounts,
+							backgroundColor: '#4bc0c0'
+						},
+						{
+							label: 'Threads',
+							data: threadCounts,
+							backgroundColor: '#ff6384'
+						}
+					]
 				},
 				options: {
 					responsive: true,
 					maintainAspectRatio: false,
 					scales: {
-						x: { ticks: { color: '#ccc' } },
-						y: { ticks: { color: '#ccc' } }
+						x: { stacked: true, ticks: { color: '#ccc' } },
+						y: { stacked: true, ticks: { color: '#ccc' } }
 					},
-					plugins: { legend: { labels: { color: '#ccc' } } }
+					plugins: {
+						legend: {
+							labels: { color: '#ccc' }
+						},
+						tooltip: {
+							mode: 'index',
+							intersect: false
+						}
+					}
 				}
 			});
 		}
@@ -350,8 +348,8 @@
 					</span>`;
 			});
 		}
-
-		function renderThreads(threads, searchInfo = '', query = '', chartLabel = 'Messages by Year') {
+		
+		function renderThreads(threads, searchInfo = '', query = '', chartLabel = 'Interactions by Year') {
 			const container = document.getElementById('threadsContainer');
 			container.innerHTML = '';
 			updateChart(threads, chartLabel);
@@ -378,9 +376,10 @@
 
 				header.innerHTML = `
 					<div>
+						<p style="margin:0; font-size: 0.7em; color:#4bc0c0;">#${thread.thread_id}</p>
 						<h2 style="display:inline">${highlightHTML(thread.title, query)}</h2>
 						<p style="margin:0.3em 0; font-size: 0.9em; color:#aaa;">
-							<strong>By:</strong> ${thread.username || 'Unknown'} | <strong>Date:</strong> ${thread.date || ''}
+							<strong>By:</strong> ${thread.username || 'Unknown'} | <strong>Date:</strong> ${thread.date || ''} | <strong>💬 ${thread.messages?.length || 0} messages</strong>
 						</p>
 					</div>
 					<div style="font-size: 1.5em;">🢓</div>
@@ -416,10 +415,28 @@
 						if (thread.content) {
 							const threadContentDiv = document.createElement('div');
 							threadContentDiv.className = 'message';
+							const msgId = `${thread.thread_id}-0`;
+							threadContentDiv.id = msgId;
+
 							threadContentDiv.innerHTML = `
-								<p><strong>Original Post by ${highlightHTML(thread.username || 'Unknown', query)}</strong> (${thread.date})</p>
+								<p><strong>Original Post by <a href="?search=author:${thread.username || 'Unknown'}">${highlightHTML(thread.username || 'Unknown', query)}</a></strong> (${thread.date})</p>
 								<p>${highlightHTML(linkify(thread.content), query).replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>')}</p>
 							`;
+
+							threadContentDiv.addEventListener('click', (e) => {
+								e.stopPropagation();
+
+								document.querySelectorAll('.message.anchor-highlight').forEach(el => {
+									el.classList.remove('anchor-highlight');
+								});
+								threadContentDiv.classList.add('anchor-highlight');
+
+								const url = new URL(window.location);
+								url.hash = msgId;
+								url.search = '';
+								history.replaceState(null, '', url.toString());
+							});
+
 							messagesContainer.appendChild(threadContentDiv);
 						}
 
@@ -435,14 +452,15 @@
 
 								const preview = highlightHTML(linkedPreview, query);
 								const fullContent = highlightHTML(linkedFull, query);
-
 								const hasMore = fullText.length > 300;
 								const msgId = `${thread.thread_id}-${m.postId}`;
 								msg.id = msgId;
 
 								msg.setAttribute('data-expandable', hasMore);
 
+								const miniTitle = m.title ? `<p style="font-weight: bold; font-size: 0.95em; margin: 0.3em 0;">${highlightHTML(m.title, query)}</p>` : '';
 								msg.innerHTML = `
+									${miniTitle}
 									<p><strong><a href="?search=author:${m.username}">${highlightHTML(m.username, query)}</a></strong> on ${m.date}<span class="timestamp"> (${timeAgo(m.date)})</span></p>
 									<p class="preview">${preview}${hasMore ? '...' : ''}</p>
 									<div class="hidden-content">${fullContent.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>')}</div>
@@ -535,6 +553,25 @@
 			scrollToAnchor();
 		}
 
+		function matchesSearch(item, threadTitle) {
+			const title = item.title || '';
+			const content = item.content || '';
+			const username = item.username || '';
+			const date = item.date ? new Date(item.date) : null;
+			const year = date ? date.getFullYear() : null;
+
+			const authorOk = authorMatch ? username.toLowerCase().includes(authorMatch[1].toLowerCase()) : true;
+			const titleOk = titleMatch ? (title.toLowerCase().includes(titleMatch[1].toLowerCase()) || (threadTitle?.toLowerCase().includes(titleMatch[1].toLowerCase()))) : true;
+			const regexOk = regex ? regex.test(content) : true;
+			const textOk = plainQuery ? (title.toLowerCase().includes(plainQuery) || content.toLowerCase().includes(plainQuery) || (threadTitle?.toLowerCase().includes(plainQuery))) : true;
+			const dateOk = filterDate ? (date && date.toDateString() === filterDate.toDateString()) : true;
+			const yearOk = filterYear ? (year === filterYear) : true;
+			const beforeOk = filterBefore ? (year < filterBefore) : true;
+			const afterOk = filterAfter ? (year > filterAfter) : true;
+
+			return authorOk && titleOk && regexOk && textOk && dateOk && yearOk && beforeOk && afterOk;
+		}
+
 		document.getElementById('searchInput').addEventListener('input', e => {
 			clearTimeout(searchDebounce);
 			const query = e.target.value.trim();
@@ -547,72 +584,58 @@
 
 			searchDebounce = setTimeout(() => {
 				document.getElementById('loading').style.display = 'flex';
+
+				const query = document.getElementById('searchInput').value.trim();
+				currentQuery = query;
+
 				const newUrl = query
-				? `${window.location.pathname}?search=${encodeURIComponent(query)}`
-				: window.location.pathname;
-
+					? `${window.location.pathname}?search=${encodeURIComponent(query)}`
+					: window.location.pathname;
 				history.replaceState(null, '', newUrl);
-
-				if (window.location.hash) {
-					history.replaceState(null, '', newUrl); // clear hash
-				}
 
 				if (!query) {
 					document.getElementById('loading').style.display = 'none';
 					return renderThreads(allThreads);
 				}
 
-				const authorMatch = query.match(/author:(\S+)/i);
-				const titleMatch = query.match(/title:(\S+)/i);
-				const regexMatch = query.match(/regex:\/(.+)\/(\w*)/);
-				const dateMatch = query.match(/date:(\d{2}-\d{2}-\d{4})/i);
-				const yearMatch = query.match(/year:(\d{4})/i);
-				const beforeMatch = query.match(/before:(\d{4})/i);
-				const afterMatch = query.match(/after:(\d{4})/i);
-				const plainQuery = query.replace(/author:\S+|title:\S+|regex:\/.*?\/[gimsuy]*|date:\S+|year:\d+|before:\d+|after:\d+/gi, '').trim();
+				// special search commands
+				authorMatch = query.match(/author:(\S+)/i);
+				titleMatch = query.match(/title:(\S+)/i);
+				regexMatch = query.match(/regex:\/(.+)\/([gimsuy]*)/);
+				dateMatch = query.match(/date:(\d{2}-\d{2}-\d{4})/i);
+				yearMatch = query.match(/year:(\d{4})/i);
+				beforeMatch = query.match(/before:(\d{4})/i);
+				afterMatch = query.match(/after:(\d{4})/i);
 
-				const isRegex = regexMatch ? new RegExp(regexMatch[1], regexMatch[2]) : null;
-				const filterDate = dateMatch ? new Date(dateMatch[1]) : null;
-				const filterYear = yearMatch ? parseInt(yearMatch[1]) : null;
-				const filterBefore = beforeMatch ? parseInt(beforeMatch[1]) : null;
-				const filterAfter = afterMatch ? parseInt(afterMatch[1]) : null;
+				plainQuery = query.replace(/author:\S+|title:\S+|regex:\/.*?\/[gimsuy]*|date:\S+|year:\d+|before:\d+|after:\d+/gi, '').trim().toLowerCase();
+				regex = regexMatch ? new RegExp(regexMatch[1], regexMatch[2]) : null;
+				filterDate = dateMatch ? new Date(dateMatch[1]) : null;
+				filterYear = yearMatch ? parseInt(yearMatch[1]) : null;
+				filterBefore = beforeMatch ? parseInt(beforeMatch[1]) : null;
+				filterAfter = afterMatch ? parseInt(afterMatch[1]) : null;
 
-				const filteredMessages = allThreads.flatMap(t =>
-					t.messages.map(m => ({ ...m, thread_id: t.thread_id, thread_title: t.title }))
-				).filter(m => {
-					const msgDate = new Date(m.date);
-					const msgYear = msgDate.getFullYear();
+				const filteredThreads = allThreads.map(thread => {
+					const threadMatches = matchesSearch({
+					title: thread.title,
+					content: thread.content,
+					username: thread.username,
+					date: thread.date
+					});
 
-					const authorMatchBool = authorMatch ? m.username?.toLowerCase().includes(authorMatch[1].toLowerCase()) : true;
-					const titleMatchBool = titleMatch ? m.thread_title?.toLowerCase().includes(titleMatch[1].toLowerCase()) : true;
-					const regexMatchBool = isRegex ? isRegex.test(m.content) : true;
-					const textMatchBool = plainQuery ? m.content?.toLowerCase().includes(plainQuery.toLowerCase()) || m.thread_title?.toLowerCase().includes(plainQuery.toLowerCase()) : true;
+					const matchingMessages = (thread.messages || []).filter(m => matchesSearch(m, thread.title));
 
-					const dateMatchBool = filterDate ? (msgDate.toDateString() === filterDate.toDateString()) : true;
-					const yearMatchBool = filterYear ? (msgYear === filterYear) : true;
-					const beforeMatchBool = filterBefore ? (msgYear < filterBefore) : true;
-					const afterMatchBool = filterAfter ? (msgYear > filterAfter) : true;
-
-					return authorMatchBool && titleMatchBool && regexMatchBool && textMatchBool &&
-								 dateMatchBool && yearMatchBool && beforeMatchBool && afterMatchBool;
-				});
-
-				const grouped = {};
-				filteredMessages.forEach(item => {
-					if (!grouped[item.thread_id]) grouped[item.thread_id] = [];
-					grouped[item.thread_id].push(item);
-				});
-
-				const filteredThreads = Object.entries(grouped).map(([thread_id, messages]) => {
-					const originalThread = allThreads.find(t => t.thread_id == thread_id);
-					return {
-						...originalThread,
-						messages: messages.sort((a, b) => new Date(a.date) - new Date(b.date))
-					};
-				});
+					if (threadMatches || matchingMessages.length > 0) {
+					return { ...thread, messages: matchingMessages };
+					}
+					return null;
+				}).filter(Boolean);
 
 				document.getElementById('loading').style.display = 'none';
-				renderThreads(filteredThreads, `🔍 ${filteredMessages.length} messages matching "${query}"`, query);
+
+				const matchedMessages = filteredThreads.reduce((sum, t) => sum + (t.messages?.length || 0), 0);
+				const threadLabel = filteredThreads.length === 1 ? 'thread' : 'threads';
+				const messageLabel = matchedMessages === 1 ? 'reply' : 'replies';
+				renderThreads(filteredThreads, `🔍 ${filteredThreads.length} ${threadLabel} with ${matchedMessages} ${messageLabel} matching "${query}"`, query);
 			}, 500);
 		});
 
@@ -627,7 +650,6 @@
 
 			loadThreads();
 		});
-
 
 		window.addEventListener('scroll', () => {
 			const btn = document.getElementById('backToTop');
