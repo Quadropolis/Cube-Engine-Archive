@@ -287,14 +287,26 @@
 			return `${years}y ${remDays}d ${remHours}h ${remMinutes}m ago`;
 		}
 
-		function updateChart(threads, customLabel = 'Messages by Year') {
-			const counts = {};
-			threads.forEach(t => t.messages.forEach(m => {
-				const year = new Date(m.date).getFullYear();
-				counts[year] = (counts[year] || 0) + 1;
-			}));
-			const labels = Object.keys(counts).sort((a, b) => a - b);
-			const values = labels.map(k => counts[k]);
+		function updateChart(threads, customLabel = 'Interactions by Year') {
+			const threadsPerYear = {};
+			const repliesPerYear = {};
+
+			threads.forEach(t => {
+				const threadYear = new Date(t.date).getFullYear();
+				threadsPerYear[threadYear] = (threadsPerYear[threadYear] || 0) + 1;
+
+				(t.messages || []).forEach(m => {
+					const msgYear = new Date(m.date).getFullYear();
+					repliesPerYear[msgYear] = (repliesPerYear[msgYear] || 0) + 1;
+				});
+			});
+
+			const allYears = Array.from(new Set([...Object.keys(threadsPerYear), ...Object.keys(repliesPerYear)]))
+				.map(Number)
+				.sort((a, b) => a - b);
+
+			const threadCounts = allYears.map(year => threadsPerYear[year] || 0);
+			const replyCounts = allYears.map(year => repliesPerYear[year] || 0);
 
 			if (chart) chart.destroy();
 			const ctx = document.getElementById('postsChart').getContext('2d');
